@@ -139,11 +139,6 @@ func processAgent(a agent.Agent, paths map[string]string, opts Options) (AgentRe
 	var asmMDDst string
 	if a == agent.Cursor {
 		asmMDDst = filepath.Join(agentHome, "rules", "ASM.md")
-		if !opts.DryRun {
-			if err := os.MkdirAll(filepath.Dir(asmMDDst), 0o755); err != nil {
-				return AgentResult{}, fmt.Errorf("create rules dir: %w", err)
-			}
-		}
 	} else {
 		asmMDDst = filepath.Join(agentHome, "ASM.md")
 	}
@@ -153,6 +148,9 @@ func processAgent(a agent.Agent, paths map[string]string, opts Options) (AgentRe
 	absent := errors.Is(statErr, fs.ErrNotExist)
 	if absent || opts.Force {
 		if !opts.DryRun {
+			if err := os.MkdirAll(filepath.Dir(asmMDDst), 0o755); err != nil {
+				return AgentResult{}, fmt.Errorf("create dir: %w", err)
+			}
 			if err := os.WriteFile(asmMDDst, []byte(asmMDContent(opts.AsmHome)), 0o644); err != nil {
 				return AgentResult{}, fmt.Errorf("write ASM.md: %w", err)
 			}
