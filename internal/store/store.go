@@ -2,6 +2,8 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -31,7 +33,7 @@ func (s *Store) load() (storeState, error) {
 	st := storeState{Packages: make(map[string]PackageRecord)}
 	data, err := os.ReadFile(s.statePath())
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return st, nil
 		}
 		return st, err
@@ -129,7 +131,7 @@ func (s *Store) DeleteLink(packageID, agent string) error {
 	if err != nil {
 		return err
 	}
-	filtered := st.Links[:0]
+	var filtered []LinkRecord
 	for _, lr := range st.Links {
 		if !(lr.PackageID == packageID && lr.Agent == agent) {
 			filtered = append(filtered, lr)

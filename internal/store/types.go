@@ -31,8 +31,8 @@ type PackageRecord struct {
 	Source        InstallSource `json:"source"`
 	Revision      string        `json:"revision"`
 	InstalledAt   time.Time     `json:"installed_at"`
-	EnabledAgents []string      `json:"enabled_agents"`
-	EntryPoints   []string      `json:"entry_points"`
+	EnabledAgents []string      `json:"enabled_agents,omitempty"`
+	EntryPoints   []string      `json:"entry_points,omitempty"`
 	StorePath     string        `json:"store_path"`
 }
 
