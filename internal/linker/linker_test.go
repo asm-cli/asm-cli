@@ -20,7 +20,7 @@ func setup(t *testing.T, kind store.PackageKind) (*linker.Linker, *store.Store, 
 	return lnk, s, agentPaths, asmHome
 }
 
-func installPkg(t *testing.T, asmHome string, kind store.PackageKind, s *store.Store) store.PackageRecord {
+func installPkg(t *testing.T, asmHome string, s *store.Store) store.PackageRecord {
 	t.Helper()
 	srcDir := filepath.Join(t.TempDir(), "test-pkg")
 	_ = os.MkdirAll(srcDir, 0o755)
@@ -35,7 +35,7 @@ func installPkg(t *testing.T, asmHome string, kind store.PackageKind, s *store.S
 
 func TestLink_Skill_CreatesSymlink(t *testing.T) {
 	lnk, s, agentPaths, asmHome := setup(t, store.PackageKindSkill)
-	rec := installPkg(t, asmHome, store.PackageKindSkill, s)
+	rec := installPkg(t, asmHome, s)
 
 	if err := lnk.Link(rec.ID, "claude"); err != nil {
 		t.Fatalf("Link: %v", err)
@@ -53,7 +53,7 @@ func TestLink_Skill_CreatesSymlink(t *testing.T) {
 
 func TestUnlink_RemovesSymlink(t *testing.T) {
 	lnk, s, agentPaths, asmHome := setup(t, store.PackageKindSkill)
-	rec := installPkg(t, asmHome, store.PackageKindSkill, s)
+	rec := installPkg(t, asmHome, s)
 	_ = lnk.Link(rec.ID, "claude")
 
 	if err := lnk.Unlink(rec.ID, "claude"); err != nil {
@@ -67,7 +67,7 @@ func TestUnlink_RemovesSymlink(t *testing.T) {
 
 func TestEnable_AddsToEnabledAgents(t *testing.T) {
 	lnk, s, _, asmHome := setup(t, store.PackageKindSkill)
-	rec := installPkg(t, asmHome, store.PackageKindSkill, s)
+	rec := installPkg(t, asmHome, s)
 
 	if err := lnk.Enable(rec.ID, "claude"); err != nil {
 		t.Fatalf("Enable: %v", err)
@@ -90,7 +90,7 @@ func TestEnable_AddsToEnabledAgents(t *testing.T) {
 
 func TestDisable_RemovesFromEnabledAgents(t *testing.T) {
 	lnk, s, _, asmHome := setup(t, store.PackageKindSkill)
-	rec := installPkg(t, asmHome, store.PackageKindSkill, s)
+	rec := installPkg(t, asmHome, s)
 	_ = lnk.Enable(rec.ID, "claude")
 
 	if err := lnk.Disable(rec.ID, "claude"); err != nil {
@@ -112,7 +112,7 @@ func TestUse_EnablesMultipleAgents(t *testing.T) {
 	s := store.New(asmHome, store.PackageKindSkill)
 	lnk := linker.New(s, agentPaths)
 
-	rec := installPkg(t, asmHome, store.PackageKindSkill, s)
+	rec := installPkg(t, asmHome, s)
 	if err := lnk.Use(rec.ID, []string{"claude", "codex"}); err != nil {
 		t.Fatalf("Use: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestUse_EnablesMultipleAgents(t *testing.T) {
 
 func TestSync_RecreatesProjections(t *testing.T) {
 	lnk, s, agentPaths, asmHome := setup(t, store.PackageKindSkill)
-	rec := installPkg(t, asmHome, store.PackageKindSkill, s)
+	rec := installPkg(t, asmHome, s)
 	_ = lnk.Enable(rec.ID, "claude")
 
 	linkPath := filepath.Join(agentPaths["claude"], "skills", rec.ID)
@@ -140,7 +140,7 @@ func TestSync_RecreatesProjections(t *testing.T) {
 
 func TestDoctor_DetectsBrokenLink(t *testing.T) {
 	lnk, s, agentPaths, asmHome := setup(t, store.PackageKindSkill)
-	rec := installPkg(t, asmHome, store.PackageKindSkill, s)
+	rec := installPkg(t, asmHome, s)
 	_ = lnk.Enable(rec.ID, "claude")
 
 	linkPath := filepath.Join(agentPaths["claude"], "skills", rec.ID)
@@ -157,7 +157,7 @@ func TestDoctor_DetectsBrokenLink(t *testing.T) {
 
 func TestStatus(t *testing.T) {
 	lnk, s, _, asmHome := setup(t, store.PackageKindSkill)
-	rec := installPkg(t, asmHome, store.PackageKindSkill, s)
+	rec := installPkg(t, asmHome, s)
 	_ = lnk.Enable(rec.ID, "claude")
 
 	report, err := lnk.Status("claude")
@@ -166,5 +166,20 @@ func TestStatus(t *testing.T) {
 	}
 	if len(report.EnabledPackages) != 1 {
 		t.Errorf("EnabledPackages = %d, want 1", len(report.EnabledPackages))
+	}
+}
+
+func TestMigrate_ReturnsUnmanagedEntries(t *testing.T) {
+	lnk, _, agentPaths, _ := setup(t, store.PackageKindSkill)
+
+	skillsDir := filepath.Join(agentPaths["claude"], "skills")
+	_ = os.MkdirAll(filepath.Join(skillsDir, "unmanaged-skill"), 0o755)
+
+	candidates, err := lnk.Migrate("claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 || candidates[0].ID != "unmanaged-skill" {
+		t.Errorf("Migrate = %+v, want 1 candidate 'unmanaged-skill'", candidates)
 	}
 }

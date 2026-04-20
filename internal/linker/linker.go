@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -70,11 +71,12 @@ func (l *Linker) linkPath(rec store.PackageRecord, a agent.Agent) (string, error
 // writeMCPManifest writes a small JSON manifest for an MCP package.
 func writeMCPManifest(path string, rec store.PackageRecord) error {
 	type manifest struct {
-		ID         string `json:"id"`
-		StorePath  string `json:"store_path"`
-		ManagedBy  string `json:"managed_by"`
+		ID        string          `json:"id"`
+		Kind      store.PackageKind `json:"kind"`
+		StorePath string          `json:"store_path"`
+		ManagedBy string          `json:"managed_by"`
 	}
-	data, err := json.MarshalIndent(manifest{ID: rec.ID, StorePath: rec.StorePath, ManagedBy: "asm"}, "", "  ")
+	data, err := json.MarshalIndent(manifest{ID: rec.ID, Kind: rec.Kind, StorePath: rec.StorePath, ManagedBy: "asm"}, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -161,10 +163,8 @@ func (l *Linker) addEnabledAgent(packageID, agentName string) error {
 	if !ok {
 		return &store.NotFoundError{ID: packageID}
 	}
-	for _, a := range rec.EnabledAgents {
-		if a == agentName {
-			return nil
-		}
+	if slices.Contains(rec.EnabledAgents, agentName) {
+		return nil
 	}
 	rec.EnabledAgents = append(rec.EnabledAgents, agentName)
 	return l.store.SavePackage(rec)
@@ -176,7 +176,7 @@ func (l *Linker) removeEnabledAgent(packageID, agentName string) error {
 	if !ok {
 		return &store.NotFoundError{ID: packageID}
 	}
-	filtered := rec.EnabledAgents[:0]
+	var filtered []string
 	for _, a := range rec.EnabledAgents {
 		if a != agentName {
 			filtered = append(filtered, a)
@@ -213,7 +213,8 @@ func (l *Linker) Use(packageID string, agents []string) error {
 }
 
 // Migrate scans the agent's package directories and returns entries whose IDs
-// are not already in the store.
+// are not already in the store. The scan directory is determined by l.store.Kind():
+// skills → agentSkillsDir, mcp → agentHome/mcp/.
 func (l *Linker) Migrate(agentName string) ([]MigrationCandidate, error) {
 	a, err := agent.Parse(agentName)
 	if err != nil {
@@ -274,14 +275,7 @@ func (l *Linker) Status(agentName string) (StatusReport, error) {
 	report.InstalledPackages = all
 
 	for _, rec := range all {
-		enabled := false
-		for _, a := range rec.EnabledAgents {
-			if a == agentName {
-				enabled = true
-				break
-			}
-		}
-		if enabled {
+		if slices.Contains(rec.EnabledAgents, agentName) {
 			report.EnabledPackages = append(report.EnabledPackages, rec)
 		} else {
 			report.DisabledPackages = append(report.DisabledPackages, rec)
