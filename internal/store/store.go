@@ -25,6 +25,11 @@ func New(asmHome string, kind PackageKind) *Store {
 // Kind returns the PackageKind this store manages.
 func (s *Store) Kind() PackageKind { return s.kind }
 
+// PackagePath returns the filesystem path where a package's files are stored.
+func (s *Store) PackagePath(id string) string {
+	return filepath.Join(s.asmHome, "store", string(s.kind)+"s", id)
+}
+
 func (s *Store) statePath() string {
 	return filepath.Join(s.asmHome, "store", string(s.kind)+"s", "state.json")
 }

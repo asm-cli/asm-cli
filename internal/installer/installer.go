@@ -157,7 +157,7 @@ func (i *Installer) installGit(source string, opts Options) (store.PackageRecord
 		Kind: i.store.Kind(),
 		Source: store.InstallSource{
 			Type:   store.SourceTypeGit,
-			Ref:    opts.Ref,
+			Ref:    source, // store clone URL so Update can re-clone if cache is missing
 			Subdir: opts.Subdir,
 		},
 		Revision:    rev,
@@ -258,13 +258,17 @@ func (i *Installer) updateLocal(rec store.PackageRecord) error {
 func (i *Installer) updateGit(rec store.PackageRecord) error {
 	cacheDir := filepath.Join(i.gitCacheDir, sanitizePath(rec.ID))
 
-	if err := gitRunIn(cacheDir, "pull"); err != nil {
-		return fmt.Errorf("git pull: %w", err)
-	}
-
-	if rec.Source.Ref != "" {
-		if err := gitRunIn(cacheDir, "checkout", rec.Source.Ref); err != nil {
-			return fmt.Errorf("git checkout: %w", err)
+	if _, err := os.Stat(cacheDir); errors.Is(err, fs.ErrNotExist) {
+		// Cache missing — re-clone from stored URL
+		if err := os.MkdirAll(filepath.Dir(cacheDir), 0o755); err != nil {
+			return fmt.Errorf("create cache dir: %w", err)
+		}
+		if err := gitRun("clone", rec.Source.Ref, cacheDir); err != nil {
+			return fmt.Errorf("git clone: %w", err)
+		}
+	} else {
+		if err := gitRunIn(cacheDir, "pull"); err != nil {
+			return fmt.Errorf("git pull: %w", err)
 		}
 	}
 
@@ -306,7 +310,7 @@ func (i *Installer) UpdateAll() error {
 
 // storePath returns the path where a package should be stored.
 func (i *Installer) storePath(id string) string {
-	return filepath.Join(i.asmHome, "store", string(i.store.Kind())+"s", id)
+	return i.store.PackagePath(id)
 }
 
 // --- Helper functions ---
@@ -385,9 +389,11 @@ func gitRevision(dir string) (string, error) {
 }
 
 func isGitURL(s string) bool {
-	return strings.HasPrefix(s, "http") ||
-		strings.HasPrefix(s, "git") ||
-		strings.HasPrefix(s, "ssh")
+	return strings.HasPrefix(s, "http://") ||
+		strings.HasPrefix(s, "https://") ||
+		strings.HasPrefix(s, "git@") ||
+		strings.HasPrefix(s, "git://") ||
+		strings.HasPrefix(s, "ssh://")
 }
 
 func gitRepoID(url string) string {
@@ -402,13 +408,21 @@ func sanitizePath(s string) string {
 
 func gitRun(args ...string) error {
 	cmd := exec.Command("git", args...)
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func gitRunIn(dir string, args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	return cmd.Run()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }
 
 func gitOutput(dir string, args ...string) (string, error) {
@@ -416,6 +430,9 @@ func gitOutput(dir string, args ...string) (string, error) {
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
+		if ee, ok := err.(*exec.ExitError); ok {
+			return "", fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(ee.Stderr)))
+		}
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
