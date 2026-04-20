@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -36,7 +37,10 @@ func Default(homeDir string) Config {
 }
 
 func Load(path string) (Config, error) {
-	homeDir, _ := os.UserHomeDir()
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return Config{}, fmt.Errorf("load config: cannot determine home directory: %w", err)
+	}
 	cfg := Default(homeDir)
 
 	data, err := os.ReadFile(path)
@@ -93,8 +97,13 @@ func Save(path string, c Config) error {
 	fmt.Fprintf(&buf, "git_cache_dir = %q\n", c.GitCacheDir)
 	fmt.Fprintf(&buf, "default_agents = [%s]\n\n", joinArray(c.DefaultAgents))
 	buf.WriteString("[agent_paths]\n")
-	for k, v := range c.AgentPaths {
-		fmt.Fprintf(&buf, "%s = %q\n", k, v)
+	keys := make([]string, 0, len(c.AgentPaths))
+	for k := range c.AgentPaths {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Fprintf(&buf, "%s = %q\n", k, c.AgentPaths[k])
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o644)
 }

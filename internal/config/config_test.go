@@ -65,6 +65,9 @@ func TestLoad_CorruptFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
 	_ = os.WriteFile(path, []byte("not = [valid toml"), 0o644)
-	_, err := config.Load(path)
-	_ = err
+	cfg, err := config.Load(path)
+	// Must not panic; either an error or a config with defaults is acceptable.
+	if err == nil && cfg.LinkMode == "" {
+		t.Error("corrupt file: expected either an error or a config with defaults")
+	}
 }

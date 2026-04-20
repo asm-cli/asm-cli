@@ -26,9 +26,18 @@ func TestParse_Invalid(t *testing.T) {
 }
 
 func TestSupported(t *testing.T) {
-	agents := agent.Supported()
-	if len(agents) != 4 {
-		t.Errorf("expected 4 supported agents, got %d", len(agents))
+	want := map[agent.Agent]bool{
+		agent.Claude: true, agent.Codex: true,
+		agent.Cursor: true, agent.Gemini: true,
+	}
+	for _, a := range agent.Supported() {
+		if !want[a] {
+			t.Errorf("unexpected agent in Supported(): %q", a)
+		}
+		delete(want, a)
+	}
+	for a := range want {
+		t.Errorf("agent %q missing from Supported()", a)
 	}
 }
 
@@ -67,7 +76,20 @@ func TestMCPConfigPath_Claude(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p == "" {
-		t.Error("expected non-empty MCP config path")
+	want := "/home/user/.claude/claude_desktop_config.json"
+	if p != want {
+		t.Errorf("MCPConfigPath(claude) = %q, want %q", p, want)
+	}
+}
+
+func TestMCPConfigPath_NonClaude(t *testing.T) {
+	paths := map[string]string{"codex": "/home/user/.codex"}
+	p, err := agent.MCPConfigPath(agent.Codex, paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "/home/user/.codex/mcp.json"
+	if p != want {
+		t.Errorf("MCPConfigPath(codex) = %q, want %q", p, want)
 	}
 }
