@@ -121,14 +121,19 @@ func TestRun_ExplicitAgents(t *testing.T) {
 	}
 }
 
-func TestRun_WritesAgentASMMd_Claude(t *testing.T) {
+func TestRun_NoPerAgentASMMd_Claude(t *testing.T) {
 	asmHome, homeDir := testEnv(t, "claude")
 	if _, err := initializer.New().Run(defaultOpts(asmHome, homeDir)); err != nil {
 		t.Fatal(err)
 	}
+	// Claude no longer gets a per-agent ASM.md; canonical file lives in asmHome.
 	dst := filepath.Join(homeDir, ".claude", "ASM.md")
-	if _, err := os.Stat(dst); err != nil {
-		t.Errorf("~/.claude/ASM.md not created: %v", err)
+	if _, err := os.Stat(dst); err == nil {
+		t.Error("~/.claude/ASM.md should NOT be created; canonical file is in ~/.asm/ASM.md")
+	}
+	// Canonical file must exist.
+	if _, err := os.Stat(filepath.Join(asmHome, "ASM.md")); err != nil {
+		t.Errorf("canonical ~/.asm/ASM.md missing: %v", err)
 	}
 }
 
@@ -151,7 +156,7 @@ func TestRun_WritesAgentASMMd_Cursor(t *testing.T) {
 func TestRun_InjectsRefIntoCLAUDEmd(t *testing.T) {
 	asmHome, homeDir := testEnv(t, "claude")
 	claudeHome := filepath.Join(homeDir, ".claude")
-	// Pre-create CLAUDE.md without @ASM.md.
+	// Pre-create CLAUDE.md without the ASM reference.
 	_ = os.WriteFile(filepath.Join(claudeHome, "CLAUDE.md"), []byte("# My config\n"), 0o644)
 
 	res, err := initializer.New().Run(defaultOpts(asmHome, homeDir))
@@ -160,8 +165,10 @@ func TestRun_InjectsRefIntoCLAUDEmd(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(filepath.Join(claudeHome, "CLAUDE.md"))
-	if !strings.Contains(string(data), "@ASM.md") {
-		t.Error("@ASM.md not injected into CLAUDE.md")
+	// Injection uses the full path: @<asmHome>/ASM.md
+	expectedRef := "@" + filepath.Join(asmHome, "ASM.md")
+	if !strings.Contains(string(data), expectedRef) {
+		t.Errorf("expected %q in CLAUDE.md, got:\n%s", expectedRef, data)
 	}
 	for _, ar := range res.Agents {
 		if ar.Agent == agent.Claude && !ar.Injected {
@@ -182,26 +189,29 @@ func TestRun_Idempotent_NoDoubleInjection(t *testing.T) {
 	}
 
 	data, _ := os.ReadFile(filepath.Join(homeDir, ".claude", "CLAUDE.md"))
-	count := strings.Count(string(data), "@ASM.md")
+	ref := "@" + filepath.Join(asmHome, "ASM.md")
+	count := strings.Count(string(data), ref)
 	if count != 1 {
-		t.Errorf("@ASM.md appears %d times in CLAUDE.md, want exactly 1", count)
+		t.Errorf("ref appears %d times in CLAUDE.md, want exactly 1\ncontent: %s", count, data)
 	}
 }
 
-func TestRun_ForceOverwritesASMMd(t *testing.T) {
-	asmHome, homeDir := testEnv(t, "claude")
-	claudeHome := filepath.Join(homeDir, ".claude")
+func TestRun_ForceOverwritesCursorASMMd(t *testing.T) {
+	// cursor still writes rules/ASM.md; verify --force overwrites it.
+	asmHome, homeDir := testEnv(t, "cursor")
+	cursorRules := filepath.Join(homeDir, ".cursor", "rules")
+	_ = os.MkdirAll(cursorRules, 0o755)
 	stub := "old content"
-	_ = os.WriteFile(filepath.Join(claudeHome, "ASM.md"), []byte(stub), 0o644)
+	_ = os.WriteFile(filepath.Join(cursorRules, "ASM.md"), []byte(stub), 0o644)
 
 	// Without --force: file unchanged.
 	opts := defaultOpts(asmHome, homeDir)
 	if _, err := initializer.New().Run(opts); err != nil {
 		t.Fatal(err)
 	}
-	data, _ := os.ReadFile(filepath.Join(claudeHome, "ASM.md"))
+	data, _ := os.ReadFile(filepath.Join(cursorRules, "ASM.md"))
 	if string(data) != stub {
-		t.Error("expected file unchanged without --force")
+		t.Error("expected cursor rules/ASM.md unchanged without --force")
 	}
 
 	// With --force: file overwritten.
@@ -209,9 +219,9 @@ func TestRun_ForceOverwritesASMMd(t *testing.T) {
 	if _, err := initializer.New().Run(opts); err != nil {
 		t.Fatal(err)
 	}
-	data, _ = os.ReadFile(filepath.Join(claudeHome, "ASM.md"))
+	data, _ = os.ReadFile(filepath.Join(cursorRules, "ASM.md"))
 	if string(data) == stub {
-		t.Error("expected file overwritten with --force")
+		t.Error("expected cursor rules/ASM.md overwritten with --force")
 	}
 	if !strings.Contains(string(data), "Agent Skills Manager") {
 		t.Error("overwritten file missing expected content")

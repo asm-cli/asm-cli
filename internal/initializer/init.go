@@ -120,7 +120,9 @@ func defaultPaths(homeDir string) map[string]string {
 	}
 }
 
-// processAgent handles one agent: writes ASM.md and injects the config reference.
+// processAgent handles one agent: injects the ASM.md reference into the agent's
+// config markdown. For cursor, creates rules/ASM.md pointing at the canonical file.
+// No per-agent copy of ASM.md is written; the canonical file lives at asmHome/ASM.md.
 func processAgent(a agent.Agent, paths map[string]string, opts Options) (AgentResult, error) {
 	ar := AgentResult{Agent: a}
 
@@ -135,38 +137,32 @@ func processAgent(a agent.Agent, paths map[string]string, opts Options) (AgentRe
 		return ar, nil
 	}
 
-	// Determine ASM.md destination path.
-	var asmMDDst string
+	// Cursor has no top-level config markdown; write a rules file instead.
 	if a == agent.Cursor {
-		asmMDDst = filepath.Join(agentHome, "rules", "ASM.md")
-	} else {
-		asmMDDst = filepath.Join(agentHome, "ASM.md")
+		dst := filepath.Join(agentHome, "rules", "ASM.md")
+		_, statErr := os.Stat(dst)
+		if errors.Is(statErr, fs.ErrNotExist) || opts.Force {
+			if !opts.DryRun {
+				if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+					return AgentResult{}, fmt.Errorf("create rules dir: %w", err)
+				}
+				if err := os.WriteFile(dst, []byte(asmMDContent(opts.AsmHome)), 0o644); err != nil {
+					return AgentResult{}, fmt.Errorf("write rules/ASM.md: %w", err)
+				}
+			}
+			ar.ASMmdWrote = true
+		}
+		return ar, nil
 	}
 
-	// Write per-agent ASM.md.
-	_, statErr := os.Stat(asmMDDst)
-	absent := errors.Is(statErr, fs.ErrNotExist)
-	if absent || opts.Force {
-		if !opts.DryRun {
-			if err := os.MkdirAll(filepath.Dir(asmMDDst), 0o755); err != nil {
-				return AgentResult{}, fmt.Errorf("create dir: %w", err)
-			}
-			if err := os.WriteFile(asmMDDst, []byte(asmMDContent(opts.AsmHome)), 0o644); err != nil {
-				return AgentResult{}, fmt.Errorf("write ASM.md: %w", err)
-			}
-		}
-		ar.ASMmdWrote = true
+	// For all other agents inject "@<asmHome>/ASM.md" into their config markdown.
+	ref := "@" + filepath.Join(opts.AsmHome, "ASM.md")
+	configPath := agentConfigFile(a, agentHome)
+	injected, err := injectRef(configPath, ref, opts.DryRun)
+	if err != nil {
+		return AgentResult{}, fmt.Errorf("inject ref: %w", err)
 	}
-
-	// Inject @ASM.md into the agent's config markdown (cursor uses rules dir, no injection).
-	if a != agent.Cursor {
-		configPath := agentConfigFile(a, agentHome)
-		injected, err := injectRef(configPath, "@ASM.md", opts.DryRun)
-		if err != nil {
-			return AgentResult{}, fmt.Errorf("inject ref: %w", err)
-		}
-		ar.Injected = injected
-	}
+	ar.Injected = injected
 
 	return ar, nil
 }
