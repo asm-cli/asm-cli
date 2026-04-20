@@ -19,8 +19,9 @@ import (
 type Candidate struct {
 	ID         string
 	Kind       store.PackageKind
-	FoundIn    []string // agent names where this ID was found
-	SourcePath string   // path to import from (first occurrence, symlinks resolved)
+	FoundIn    []string          // agent names where this ID was found
+	SourcePath string            // path to import from (first occurrence, symlinks resolved)
+	LinkPaths  map[string]string // agent → explicit link path (empty = use computed default)
 }
 
 // ImportedPackage records a successful import.
@@ -61,23 +62,39 @@ func (m *Migrator) Scan(
 	byID := make(map[string]*Candidate)
 
 	for _, agentName := range agentNames {
-		raw, err := lnk.Migrate(agentName)
+		var raw []linker.MigrationCandidate
+		var err error
+		if s.Kind() == store.PackageKindPlugin {
+			raw, err = lnk.MigratePlugins(agentName)
+		} else {
+			raw, err = lnk.Migrate(agentName)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("scan %s: %w", agentName, err)
 		}
 		for _, mc := range raw {
 			if c, ok := byID[mc.ID]; ok {
-				// Already seen from another agent — merge FoundIn only.
+				// Already seen from another agent — merge FoundIn and link paths.
 				c.FoundIn = append(c.FoundIn, agentName)
+				if mc.LinkPath != "" {
+					if c.LinkPaths == nil {
+						c.LinkPaths = make(map[string]string)
+					}
+					c.LinkPaths[agentName] = mc.LinkPath
+				}
 			} else {
 				// Resolve symlinks so we import real content, not a dangling pointer.
 				src := resolveSource(mc.SourcePath)
-				byID[mc.ID] = &Candidate{
+				cand := &Candidate{
 					ID:         mc.ID,
 					Kind:       s.Kind(),
 					FoundIn:    []string{agentName},
 					SourcePath: src,
 				}
+				if mc.LinkPath != "" {
+					cand.LinkPaths = map[string]string{agentName: mc.LinkPath}
+				}
+				byID[mc.ID] = cand
 			}
 		}
 	}
@@ -130,8 +147,14 @@ func (m *Migrator) Apply(
 
 		// Enable for every agent that had this package.
 		for _, agentName := range c.FoundIn {
-			if err := lnk.Enable(c.ID, agentName); err != nil {
-				return result, fmt.Errorf("enable %s for %s: %w", c.ID, agentName, err)
+			if lp, ok := c.LinkPaths[agentName]; ok && lp != "" {
+				if err := lnk.EnableAtPath(c.ID, agentName, lp); err != nil {
+					return result, fmt.Errorf("enable %s for %s: %w", c.ID, agentName, err)
+				}
+			} else {
+				if err := lnk.Enable(c.ID, agentName); err != nil {
+					return result, fmt.Errorf("enable %s for %s: %w", c.ID, agentName, err)
+				}
 			}
 		}
 

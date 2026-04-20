@@ -3,6 +3,7 @@ package linker
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -35,6 +36,10 @@ type Issue struct {
 type MigrationCandidate struct {
 	ID         string
 	SourcePath string
+	// LinkPath overrides the computed link destination. Used by plugins where
+	// the link must replace a specific path (e.g. the installPath in
+	// installed_plugins.json). Empty means use the default computed path.
+	LinkPath string
 }
 
 // Linker manages projections (symlinks / JSON manifests) between the ASM
@@ -53,7 +58,7 @@ func New(s *store.Store, agentPaths map[string]string) *Linker {
 // live inside the agent's home directory.
 func (l *Linker) linkPath(rec store.PackageRecord, a agent.Agent) (string, error) {
 	switch rec.Kind {
-	case store.PackageKindSkill:
+	case store.PackageKindSkill, store.PackageKindPlugin:
 		skillsDir, err := agent.SkillsDir(a, l.agentPaths)
 		if err != nil {
 			return "", err
@@ -104,12 +109,12 @@ func (l *Linker) Link(packageID, agentName string) error {
 		return err
 	}
 
-	// Remove any existing entry (ignore error).
-	_ = os.Remove(lp)
+	// Remove any existing entry. Skills can be directories, so use RemoveAll.
+	_ = os.RemoveAll(lp)
 
 	var mode string
 	switch rec.Kind {
-	case store.PackageKindSkill:
+	case store.PackageKindSkill, store.PackageKindPlugin:
 		if err := os.Symlink(rec.StorePath, lp); err != nil {
 			return err
 		}
@@ -194,6 +199,64 @@ func (l *Linker) Enable(packageID, agentName string) error {
 	return l.addEnabledAgent(packageID, agentName)
 }
 
+// EnableAtPath is like Enable but uses an explicit link path instead of
+// computing one from the agent kind. Used for plugins whose installPath is
+// recorded in an external manifest (e.g. installed_plugins.json).
+func (l *Linker) EnableAtPath(packageID, agentName, linkPath string) error {
+	rec, ok := l.store.GetPackage(packageID)
+	if !ok {
+		return &store.NotFoundError{ID: packageID}
+	}
+
+	if err := os.MkdirAll(filepath.Dir(linkPath), 0o755); err != nil {
+		return err
+	}
+	_ = os.RemoveAll(linkPath)
+	if err := os.Symlink(rec.StorePath, linkPath); err != nil {
+		return err
+	}
+
+	lr := store.LinkRecord{
+		PackageID: packageID,
+		Agent:     agentName,
+		Kind:      rec.Kind,
+		Mode:      "symlink",
+		LinkPath:  linkPath,
+		Target:    rec.StorePath,
+		UpdatedAt: time.Now(),
+	}
+	if err := l.store.SaveLink(lr); err != nil {
+		return err
+	}
+	return l.addEnabledAgent(packageID, agentName)
+}
+
+// MigratePlugins scans the agent's plugin directories and returns entries
+// whose IDs are not already in the plugin store.
+func (l *Linker) MigratePlugins(agentName string) ([]MigrationCandidate, error) {
+	a, err := agent.Parse(agentName)
+	if err != nil {
+		return nil, err
+	}
+
+	entries, err := agent.PluginScanEntries(a, l.agentPaths)
+	if err != nil {
+		return nil, fmt.Errorf("scan %s plugins: %w", agentName, err)
+	}
+
+	var candidates []MigrationCandidate
+	for _, e := range entries {
+		if _, ok := l.store.GetPackage(e.ID); !ok {
+			candidates = append(candidates, MigrationCandidate{
+				ID:         e.ID,
+				SourcePath: e.SourcePath,
+				LinkPath:   e.LinkPath,
+			})
+		}
+	}
+	return candidates, nil
+}
+
 // Disable removes the projection and marks the agent as disabled.
 func (l *Linker) Disable(packageID, agentName string) error {
 	if err := l.Unlink(packageID, agentName); err != nil {
@@ -247,6 +310,15 @@ func (l *Linker) Migrate(agentName string) ([]MigrationCandidate, error) {
 	var candidates []MigrationCandidate
 	for _, e := range entries {
 		id := e.Name()
+		// Skip symlinks (already managed by ASM or agent-internal).
+		if e.Type()&fs.ModeSymlink != 0 {
+			continue
+		}
+		// Skip hidden entries (e.g. .system) and agent-prefixed built-ins
+		// (e.g. codex-primary-runtime for the codex agent).
+		if strings.HasPrefix(id, ".") || strings.HasPrefix(id, string(a)+"-") {
+			continue
+		}
 		// For MCP entries the filename includes ".json"; strip it.
 		if l.store.Kind() == store.PackageKindMCP {
 			id = strings.TrimSuffix(id, ".json")

@@ -8,8 +8,9 @@ import (
 type PackageKind string
 
 const (
-	PackageKindSkill PackageKind = "skill"
-	PackageKindMCP   PackageKind = "mcp"
+	PackageKindSkill   PackageKind = "skill"
+	PackageKindMCP     PackageKind = "mcp"
+	PackageKindPlugin  PackageKind = "plugin"
 )
 
 type SourceType string

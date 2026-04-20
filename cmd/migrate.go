@@ -17,13 +17,13 @@ func newMigrateCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "Import all unmanaged skills and MCP packages from all agents into ASM",
-		Long: `Scans every configured agent's skills and mcp directories for packages
-not tracked by ASM, deduplicates across agents, then imports each unique
-package into the store and links it to every agent that had it.
+		Short: "Import all unmanaged skills, MCP, and plugins from all agents into ASM",
+		Long: `Scans every configured agent's skills, mcp, and plugin directories for
+packages not tracked by ASM, deduplicates across agents, then imports each
+unique package into the store and links it to every agent that had it.
 
-This command handles both skills and MCP in one pass.
-Use 'asm skills migrate' or 'asm mcp migrate' to handle each kind separately.`,
+This command handles skills, MCP, and plugins in one pass.
+Use 'asm skills migrate', 'asm mcp migrate', or 'asm plugins migrate' to handle each kind separately.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			asmHome := resolveAsmHome()
@@ -67,7 +67,22 @@ Use 'asm skills migrate' or 'asm mcp migrate' to handle each kind separately.`,
 				Linker:    mcpLnk,
 				Cfg:       cfg,
 			}
-			return pkgcmd.MigrateKind(cmd, mcpPctx, agentNames, dryRunFlag)
+			if err := pkgcmd.MigrateKind(cmd, mcpPctx, agentNames, dryRunFlag); err != nil {
+				return err
+			}
+
+			cmd.Println()
+
+			// Migrate plugins.
+			pluginStore := store.New(asmHome, store.PackageKindPlugin)
+			pluginInst := installer.New(pluginStore, asmHome, gitCacheDir)
+			pluginLnk := linker.New(pluginStore, cfg.AgentPaths)
+			pluginPctx := pkgcmd.Context{
+				Installer: pluginInst,
+				Linker:    pluginLnk,
+				Cfg:       cfg,
+			}
+			return pkgcmd.MigrateKind(cmd, pluginPctx, agentNames, dryRunFlag)
 		},
 	}
 

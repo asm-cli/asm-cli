@@ -53,6 +53,7 @@ func (in *Initializer) Run(opts Options) (Result, error) {
 	for _, sub := range []string{
 		filepath.Join("store", "skills"),
 		filepath.Join("store", "mcps"),
+		filepath.Join("store", "plugins"),
 		filepath.Join("cache", "git"),
 	} {
 		if !opts.DryRun {
@@ -219,13 +220,24 @@ func asmMDContent(asmHome string) string {
 	_ = asmHome // reserved for future path interpolation
 	return `# Agent Skills Manager (ASM)
 
-ASM manages skill and MCP packages for AI agent environments.
+ASM manages skill, MCP, and plugin packages for AI agent environments.
 It installs packages into a central store and projects them into each agent's
-home directory via symlinks (skills) or JSON manifests (MCP).
+home directory via symlinks (skills/plugins) or JSON manifests (MCP).
 
-## Binary
+## IMPORTANT — always use ASM for package operations
 
-    ~/.asm/bin/asm        (or $ASM_HOME/bin/asm)
+**You MUST use the ` + "`asm`" + ` CLI for all install / enable / disable / update / remove
+operations on skills, MCP servers, and plugins.**
+
+Rules:
+- ` + "`asm`" + ` is a **globally installed binary** — never use ` + "`npm`" + `, or any
+  agent-specific install mechanism. Just run ` + "`asm <subcommand>`" + `.
+- Before installing, check if the package is already in the store:
+  ` + "`asm plugins list`" + ` / ` + "`asm skills list`" + `. If it is, use ` + "`enable`" + ` instead of ` + "`install`" + `.
+- Never read the asm source code or search the current project to figure out
+  how asm works — use ` + "`asm --help`" + ` or ` + "`asm <command> --help`" + ` instead.
+- Never copy files manually — doing so bypasses the shared store and breaks
+  cross-agent deduplication.
 
 ## Configuration
 
@@ -233,8 +245,9 @@ home directory via symlinks (skills) or JSON manifests (MCP).
 
 ## Slash command mapping
 
-    /skills  →  asm skills <subcommand>
-    /mcp     →  asm mcp    <subcommand>
+    /skills   →  asm skills  <subcommand>
+    /mcp      →  asm mcp     <subcommand>
+    /plugins  →  asm plugins <subcommand>
 
 ## Skills commands
 
@@ -254,18 +267,25 @@ home directory via symlinks (skills) or JSON manifests (MCP).
 
     install / list / status / enable / disable / use / update / remove / sync / doctor / migrate
 
+## Plugins commands  (same subcommand set, operates on agent plugins)
+
+    install / list / status / enable / disable / use / update / remove / sync / doctor / migrate
+
 ## Typical workflow
 
 ` + "```" + `sh
 asm init
-asm skills install https://github.com/owner/skill --agents claude
-asm skills doctor
-asm skills update my-skill
+asm skills  install https://github.com/owner/skill --agents claude
+asm plugins install https://github.com/owner/plugin --agents claude,codex
+asm skills  doctor
+asm skills  update my-skill
 ` + "```" + `
 
 ## Notes
 
 - asm init is idempotent: @ASM.md is never injected twice.
 - asm skills sync recreates missing projections without reinstalling.
+- Plugins are agent-native extensions (e.g. superpowers); ASM stores them once
+  and symlinks each agent's plugin directory to the shared store copy.
 `
 }
