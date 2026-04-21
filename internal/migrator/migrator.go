@@ -7,6 +7,7 @@ package migrator
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -22,7 +23,8 @@ type Candidate struct {
 	FoundIn    []string          // agent names where this ID was found
 	SourcePath string            // path to import from (first occurrence, symlinks resolved)
 	LinkPaths  map[string]string // agent → explicit link path (empty = use computed default)
-	ConfigData []byte            // non-nil for MCP: raw JSON config to write to store
+	ConfigData  []byte            // non-nil for MCP: raw JSON config to write to store
+	LocalBinary string            // MCP: absolute path of local binary to import
 }
 
 // ImportedPackage records a successful import.
@@ -88,10 +90,11 @@ func (m *Migrator) Scan(
 				}
 			} else {
 				cand := &Candidate{
-					ID:         mc.ID,
-					Kind:       s.Kind(),
-					FoundIn:    []string{agentName},
-					ConfigData: mc.ConfigData,
+					ID:          mc.ID,
+					Kind:        s.Kind(),
+					FoundIn:     []string{agentName},
+					ConfigData:  mc.ConfigData,
+					LocalBinary: mc.LocalBinary,
 				}
 				if mc.ConfigData == nil {
 					cand.SourcePath = resolveSource(mc.SourcePath)
@@ -133,14 +136,22 @@ func (m *Migrator) Apply(
 		alreadyInStore := false
 
 		if c.ConfigData != nil {
-			// MCP path: write config JSON directly to store.
-			_, err := inst.InstallMCPConfig(c.ID, c.ConfigData)
+			// MCP path: write config JSON (and optional binary) to store.
+			rec, err := inst.InstallMCPConfig(c.ID, c.ConfigData, c.LocalBinary)
 			if err != nil {
 				var aee *store.AlreadyExistsError
 				if errors.As(err, &aee) {
 					alreadyInStore = true
 				} else {
 					return result, fmt.Errorf("import %s: %w", c.ID, err)
+				}
+			}
+			// Replace original binary with a symlink to the ASM store copy.
+			if c.LocalBinary != "" && !alreadyInStore {
+				storeBin := filepath.Join(rec.StorePath, filepath.Base(c.LocalBinary))
+				_ = os.Remove(c.LocalBinary)
+				if err := os.Symlink(storeBin, c.LocalBinary); err != nil {
+					return result, fmt.Errorf("symlink binary %s: %w", c.LocalBinary, err)
 				}
 			}
 		} else {

@@ -2,6 +2,7 @@ package installer
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -172,9 +173,14 @@ func (i *Installer) installGit(source string, opts Options) (store.PackageRecord
 	return rec, nil
 }
 
-// InstallMCPConfig writes a raw JSON config to the store and registers the
-// package. Used when migrating MCP servers from agent config files.
-func (i *Installer) InstallMCPConfig(id string, configJSON []byte) (store.PackageRecord, error) {
+// InstallMCPConfig writes a raw JSON config (and optionally a binary) to the
+// store and registers the package. Used when migrating MCP servers from agent
+// config files.
+//
+// If localBinary is non-empty, the file is copied into storePath/ and the
+// "command" field in configJSON is rewritten to the store copy's path so that
+// subsequent inject operations use the ASM-managed binary.
+func (i *Installer) InstallMCPConfig(id string, configJSON []byte, localBinary string) (store.PackageRecord, error) {
 	if _, ok := i.store.GetPackage(id); ok {
 		return store.PackageRecord{}, &store.AlreadyExistsError{ID: id}
 	}
@@ -182,6 +188,27 @@ func (i *Installer) InstallMCPConfig(id string, configJSON []byte) (store.Packag
 	storePath := i.storePath(id)
 	if err := os.MkdirAll(storePath, 0o755); err != nil {
 		return store.PackageRecord{}, fmt.Errorf("create store dir: %w", err)
+	}
+
+	// Copy local binary into the store and rewrite the command path.
+	if localBinary != "" {
+		binName := filepath.Base(localBinary)
+		storeBin := filepath.Join(storePath, binName)
+		if err := copyFile(localBinary, storeBin); err != nil {
+			return store.PackageRecord{}, fmt.Errorf("copy binary: %w", err)
+		}
+		// Preserve executable bit.
+		if info, err := os.Stat(localBinary); err == nil {
+			_ = os.Chmod(storeBin, info.Mode())
+		}
+		// Rewrite "command" in configJSON to point to the store copy.
+		var cfg map[string]interface{}
+		if err := json.Unmarshal(configJSON, &cfg); err == nil {
+			cfg["command"] = storeBin
+			if updated, err := json.Marshal(cfg); err == nil {
+				configJSON = updated
+			}
+		}
 	}
 
 	cfgFile := filepath.Join(storePath, "config.json")

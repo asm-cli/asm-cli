@@ -148,8 +148,9 @@ type MCPServerConfig struct {
 
 // MCPScanEntry describes an MCP server found in an agent's configuration.
 type MCPScanEntry struct {
-	ID         string
-	ConfigJSON []byte // JSON-encoded MCPServerConfig
+	ID          string
+	ConfigJSON  []byte // JSON-encoded MCPServerConfig
+	LocalBinary string // absolute path of local binary inside agent home, if any
 }
 
 // MCPScanEntries returns MCP server entries found in the agent's native config.
@@ -236,13 +237,16 @@ func codexMCPEntries(agentPaths map[string]string) ([]MCPScanEntry, error) {
 		}
 	}
 
+	agentHome := agentPaths[string(Codex)]
 	var entries []MCPScanEntry
 	for id, srv := range servers {
-		data, err := json.Marshal(srv)
+		cfgData, err := json.Marshal(srv)
 		if err != nil {
 			continue
 		}
-		entries = append(entries, MCPScanEntry{ID: id, ConfigJSON: data})
+		entry := MCPScanEntry{ID: id, ConfigJSON: cfgData}
+		entry.LocalBinary = localBinaryPath(srv.Command, agentHome)
+		entries = append(entries, entry)
 	}
 	return entries, nil
 }
@@ -271,9 +275,29 @@ func claudeMCPEntries(agentPaths map[string]string) ([]MCPScanEntry, error) {
 		if err != nil {
 			continue
 		}
-		entries = append(entries, MCPScanEntry{ID: id, ConfigJSON: cfgJSON})
+		entry := MCPScanEntry{ID: id, ConfigJSON: cfgJSON}
+		entry.LocalBinary = localBinaryPath(cfg.Command, home)
+		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+// localBinaryPath returns the absolute path of cmd if it is a file that lives
+// inside agentHome (e.g. ~/.codex/bin/mcp-zero), otherwise returns "".
+// Commands that are bare names (npx, node) or system paths (/usr/bin/…) are
+// not considered local binaries.
+func localBinaryPath(cmd, agentHome string) string {
+	if cmd == "" || !filepath.IsAbs(cmd) {
+		return ""
+	}
+	if !strings.HasPrefix(cmd, agentHome) {
+		return ""
+	}
+	info, err := os.Stat(cmd)
+	if err != nil || info.IsDir() {
+		return ""
+	}
+	return cmd
 }
 
 func trimTOMLQuotes(s string) string {

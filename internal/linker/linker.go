@@ -42,8 +42,10 @@ type MigrationCandidate struct {
 	LinkPath string
 	// ConfigData holds raw config JSON for MCP servers. When set, the migrator
 	// writes it directly to the store instead of copying a source directory.
-	// NativeLink is set automatically when ConfigData is non-nil.
 	ConfigData []byte
+	// LocalBinary is the absolute path of a binary inside the agent's home
+	// that should be copied to the store (e.g. ~/.codex/bin/mcp-zero).
+	LocalBinary string
 }
 
 // Linker manages projections (symlinks / JSON manifests) between the ASM
@@ -272,8 +274,9 @@ func (l *Linker) MigrateMCPs(agentName string) ([]MigrationCandidate, error) {
 	for _, e := range entries {
 		if _, ok := l.store.GetPackage(e.ID); !ok {
 			candidates = append(candidates, MigrationCandidate{
-				ID:         e.ID,
-				ConfigData: e.ConfigJSON,
+				ID:          e.ID,
+				ConfigData:  e.ConfigJSON,
+				LocalBinary: e.LocalBinary,
 			})
 		}
 	}
