@@ -7,12 +7,20 @@ import (
 )
 
 var asmHomeFlag string
+var showVersion bool
 
 var rootCmd = &cobra.Command{
 	Use:           "asm",
 	Short:         "Agent Skills Manager",
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if showVersion {
+			versionCmd.Run(cmd, args)
+			return nil
+		}
+		return cmd.Help()
+	},
 }
 
 // Execute runs the root command with os.Stdout/Stderr.
@@ -33,4 +41,5 @@ func ExecuteWithWriter(w io.Writer, args ...string) error {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&asmHomeFlag, "asm-home", "", "override ASM home directory")
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "print version information")
 }
