@@ -1,6 +1,6 @@
 # ASM — Agent Skills Manager
 
-A CLI tool for managing AI agent skill packages and MCP (Model Context Protocol) packages across multiple agents (Claude, Codex, Cursor, Gemini).
+Manage skills, MCP servers, and plugins for AI agents from a single store.
 
 [中文文档](README.zh.md)
 
@@ -12,8 +12,10 @@ A CLI tool for managing AI agent skill packages and MCP (Model Context Protocol)
 - [Installation](#installation)
 - [How It Works](#how-it-works)
 - [Configuration](#configuration)
+- [Init](#init)
 - [Skills Commands](#skills-commands)
 - [MCP Commands](#mcp-commands)
+- [Plugins Commands](#plugins-commands)
 - [Global Flags](#global-flags)
 - [Directory Layout](#directory-layout)
 
@@ -21,12 +23,15 @@ A CLI tool for managing AI agent skill packages and MCP (Model Context Protocol)
 
 ## Overview
 
-ASM maintains a central store of packages under `~/.asm/` and projects them into each agent's home directory:
+ASM maintains a central store under `~/.asm/` and projects packages into each agent's home directory:
 
-- **Skills** are projected as symlinks (`~/.claude/skills/<id>` → `~/.asm/store/skills/<id>`)
-- **MCP packages** are projected as JSON manifests (`~/.claude/mcp/<id>.json`)
+| Kind | Store | Projection |
+|------|-------|------------|
+| **Skills** | `~/.asm/store/skills/<id>` | symlink → `~/.claude/skills/<id>` |
+| **MCP servers** | `~/.asm/store/mcps/<id>/config.json` | injected into agent's native config (`config.toml` / `settings.json`) |
+| **Plugins** | `~/.asm/store/plugins/<id>` | symlink → agent plugin directory |
 
-This lets you install once and enable the same package for multiple agents without duplication.
+Install once, enable for any number of agents — no duplication.
 
 ---
 
@@ -48,20 +53,24 @@ Requires Go 1.22+.
 Source (local path / git URL)
         │
         ▼
-   ASM Store  (~/.asm/store/skills/<id>  or  ~/.asm/store/mcps/<id>)
+   ASM Store  (~/.asm/store/{skills,mcps,plugins}/<id>)
         │
-        ├─── symlink / JSON manifest ──► ~/.claude/skills/<id>
-        ├─── symlink / JSON manifest ──► ~/.codex/skills/<id>
-        └─── ...
+        ├── symlink ──────────────► ~/.claude/skills/<id>
+        ├── symlink ──────────────► ~/.codex/skills/<id>
+        ├── config injection ─────► ~/.codex/config.toml
+        └── config injection ─────► ~/.claude/settings.json
 ```
 
-**Install** copies files into the store. **Enable / use** creates the projection in the agent directory. **Sync** recreates any broken projections.
+- **install** copies files into the store
+- **enable / use** creates the projection in the agent directory
+- **migrate** imports existing unmanaged packages into the store
+- **sync** recreates any broken projections
 
 ---
 
 ## Configuration
 
-ASM looks for a config file at `~/.asm/config.toml`. If absent, defaults are used.
+ASM reads `~/.asm/config.toml`. Defaults are used when absent.
 
 ```toml
 asm_home      = "/home/you/.asm"
@@ -76,7 +85,19 @@ cursor = "/home/you/.cursor"
 gemini = "/home/you/.gemini"
 ```
 
-The `ASM_HOME` environment variable overrides `asm_home` at runtime.
+`ASM_HOME` environment variable overrides `asm_home` at runtime.
+
+---
+
+## Init
+
+Initialize ASM and inject the `@ASM.md` reference into all configured agents.
+
+```bash
+asm init
+```
+
+`asm init` is idempotent — safe to run multiple times.
 
 ---
 
@@ -86,38 +107,24 @@ All commands share the `asm skills` prefix.
 
 ### install
 
-Install a skill from a local directory or git URL.
-
 ```bash
 asm skills install <source> [flags]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--id <string>` | Override the package ID (defaults to directory/repo name) |
+| `--id <string>` | Override the package ID |
 | `--subdir <path>` | Subdirectory within the source to install |
-| `--ref <string>` | Git ref to check out (branch, tag, or commit SHA) |
-| `--agents <list>` | Comma-separated agents to enable immediately after install |
-
-**Examples:**
+| `--ref <string>` | Git ref (branch, tag, or commit SHA) |
+| `--agents <list>` | Comma-separated agents to enable after install |
 
 ```bash
-# Install from a local directory
 asm skills install ./my-skill
-
-# Install from git and immediately enable for claude
-asm skills install https://github.com/user/my-skill --agents claude
-
-# Install a subdirectory from a git repo at a specific tag
+asm skills install https://github.com/user/my-skill --agents claude,codex
 asm skills install https://github.com/user/repo --subdir skills/my-skill --ref v1.2.0
-
-# Install with a custom ID
-asm skills install ./my-skill --id my-custom-id
 ```
 
 ### list
-
-List all installed skill packages.
 
 ```bash
 asm skills list
@@ -125,78 +132,35 @@ asm skills list
 
 ### status
 
-Show which skills are enabled or disabled for an agent.
-
 ```bash
 asm skills status [--agent <name>]
 ```
 
-Defaults to the first agent in `default_agents` (or `claude`).
-
-### enable
-
-Create the projection and mark the skill as enabled for an agent.
+### enable / disable
 
 ```bash
 asm skills enable <id> [--agent <name>]
-```
-
-### disable
-
-Remove the projection and mark the skill as disabled for an agent.
-
-```bash
 asm skills disable <id> [--agent <name>]
 ```
 
 ### use
 
-Enable a skill for one or more agents at once.
+Enable for multiple agents at once.
 
 ```bash
-asm skills use <id> [--agents <list>]
-```
-
-```bash
-asm skills use my-skill --agents claude,codex
-```
-
-### link
-
-Create the projection without changing the enabled/disabled state in the store.
-
-```bash
-asm skills link <id> [--agent <name>]
-```
-
-### unlink
-
-Remove the projection without changing the enabled/disabled state in the store.
-
-```bash
-asm skills unlink <id> [--agent <name>]
+asm skills use <id> --agents claude,codex
 ```
 
 ### update
-
-Re-copy (local) or re-pull (git) a package to pick up changes.
 
 ```bash
 asm skills update <id>
 asm skills update --all
 ```
 
-### uninstall
-
-Remove the store record and files. Existing projections (symlinks) are **not** removed.
-
-```bash
-asm skills uninstall <id>
-```
-
 ### remove
 
-Remove all projections, the store record, and the stored files.
+Remove projections, store record, and stored files.
 
 ```bash
 asm skills remove <id>
@@ -204,7 +168,7 @@ asm skills remove <id>
 
 ### sync
 
-Recreate any projections that are tracked in the store but missing from disk (e.g. after moving the agent home directory).
+Recreate projections that are tracked but missing from disk.
 
 ```bash
 asm skills sync
@@ -212,7 +176,7 @@ asm skills sync
 
 ### doctor
 
-Inspect all tracked projections and report broken ones.
+Report broken projections.
 
 ```bash
 asm skills doctor
@@ -220,7 +184,7 @@ asm skills doctor
 
 ### migrate
 
-Scan an agent's skills directory for entries not yet tracked by ASM.
+Import unmanaged skills from an agent directory into the store.
 
 ```bash
 asm skills migrate [--agent <name>]
@@ -230,23 +194,42 @@ asm skills migrate [--agent <name>]
 
 ## MCP Commands
 
-`asm mcp` exposes the same set of subcommands as `asm skills`. The difference is the package kind and projection format:
-
-- MCP packages are stored under `~/.asm/store/mcps/<id>`
-- Projections are JSON manifests at `~/.claude/mcp/<id>.json`
+`asm mcp` exposes the same subcommands. MCP packages are stored under `~/.asm/store/mcps/<id>` and projected by injecting entries into the agent's native config file (`~/.codex/config.toml` or `~/.claude/settings.json`).
 
 ```bash
 asm mcp install <source> [flags]
 asm mcp list
-asm mcp status [--agent <name>]
-asm mcp enable <id> [--agent <name>]
+asm mcp status  [--agent <name>]
+asm mcp enable  <id> [--agent <name>]
 asm mcp disable <id> [--agent <name>]
-asm mcp use <id> [--agents <list>]
-asm mcp update <id> | --all
-asm mcp remove <id>
+asm mcp use     <id> [--agents <list>]
+asm mcp update  <id> | --all
+asm mcp remove  <id>
 asm mcp sync
 asm mcp doctor
 asm mcp migrate [--agent <name>]
+```
+
+`migrate` reads the agent's native MCP config, imports each server into the store, rewrites the `command` path to the ASM store copy, and removes any local binaries from the agent home.
+
+---
+
+## Plugins Commands
+
+`asm plugins` manages agent-native plugin extensions (e.g. superpowers). Plugins are stored under `~/.asm/store/plugins/<id>` and symlinked into each agent's plugin directory.
+
+```bash
+asm plugins install <source> [flags]
+asm plugins list
+asm plugins status  [--agent <name>]
+asm plugins enable  <id> [--agent <name>]
+asm plugins disable <id> [--agent <name>]
+asm plugins use     <id> [--agents <list>]
+asm plugins update  <id> | --all
+asm plugins remove  <id>
+asm plugins sync
+asm plugins doctor
+asm plugins migrate [--agent <name>]
 ```
 
 ---
@@ -255,14 +238,10 @@ asm mcp migrate [--agent <name>]
 
 | Flag | Description |
 |------|-------------|
-| `--asm-home <path>` | Override the ASM home directory for this invocation |
+| `--asm-home <path>` | Override the ASM home directory |
 | `-h, --help` | Help for any command |
 
-The resolution order for ASM home:
-
-1. `--asm-home` flag
-2. `ASM_HOME` environment variable
-3. `~/.asm`
+Resolution order for ASM home: `--asm-home` flag → `ASM_HOME` env → `~/.asm`
 
 ---
 
@@ -271,19 +250,27 @@ The resolution order for ASM home:
 ```
 ~/.asm/
 ├── config.toml
+├── ASM.md
 ├── cache/
-│   └── git/                  # git clone cache
+│   └── git/
 └── store/
     ├── skills/
-    │   ├── state.json        # package and link records
-    │   └── <id>/             # copied skill files
-    └── mcps/
+    │   ├── state.json
+    │   └── <id>/
+    ├── mcps/
+    │   ├── state.json
+    │   └── <id>/
+    │       └── config.json
+    └── plugins/
         ├── state.json
-        └── <id>/             # copied MCP files
+        └── <id>/
 
 ~/.claude/
-├── skills/
-│   └── <id> -> ~/.asm/store/skills/<id>   # symlink
-└── mcp/
-    └── <id>.json             # generated manifest
+└── skills/
+    └── <id> -> ~/.asm/store/skills/<id>    # symlink
+
+~/.codex/
+├── config.toml   # MCP entries injected here
+└── skills/
+    └── <id> -> ~/.asm/store/skills/<id>    # symlink
 ```
