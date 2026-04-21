@@ -68,28 +68,9 @@ func (l *Linker) linkPath(rec store.PackageRecord, a agent.Agent) (string, error
 			return "", err
 		}
 		return filepath.Join(skillsDir, rec.ID), nil
-	default: // MCP
-		home, err := agent.Home(a, l.agentPaths)
-		if err != nil {
-			return "", err
-		}
-		return filepath.Join(home, "mcp", rec.ID+".json"), nil
+	default: // MCP — link path is the agent's native config file
+		return agent.MCPNativeConfigPath(a, l.agentPaths)
 	}
-}
-
-// writeMCPManifest writes a small JSON manifest for an MCP package.
-func writeMCPManifest(path string, rec store.PackageRecord) error {
-	type manifest struct {
-		ID        string          `json:"id"`
-		Kind      store.PackageKind `json:"kind"`
-		StorePath string          `json:"store_path"`
-		ManagedBy string          `json:"managed_by"`
-	}
-	data, err := json.MarshalIndent(manifest{ID: rec.ID, Kind: rec.Kind, StorePath: rec.StorePath, ManagedBy: "asm"}, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
 }
 
 // Link creates (or recreates) the projection for packageID in the given agent.
@@ -109,25 +90,30 @@ func (l *Linker) Link(packageID, agentName string) error {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(lp), 0o755); err != nil {
-		return err
-	}
-
-	// Remove any existing entry. Skills can be directories, so use RemoveAll.
-	_ = os.RemoveAll(lp)
-
 	var mode string
 	switch rec.Kind {
 	case store.PackageKindSkill, store.PackageKindPlugin:
+		if err := os.MkdirAll(filepath.Dir(lp), 0o755); err != nil {
+			return err
+		}
+		_ = os.RemoveAll(lp)
 		if err := os.Symlink(rec.StorePath, lp); err != nil {
 			return err
 		}
 		mode = "symlink"
-	default:
-		if err := writeMCPManifest(lp, rec); err != nil {
+	default: // MCP: inject into agent's native config file
+		cfgData, err := os.ReadFile(filepath.Join(rec.StorePath, "config.json"))
+		if err != nil {
+			return fmt.Errorf("read mcp config: %w", err)
+		}
+		var mcpCfg agent.MCPServerConfig
+		if err := json.Unmarshal(cfgData, &mcpCfg); err != nil {
+			return fmt.Errorf("parse mcp config: %w", err)
+		}
+		if err := agent.InjectMCP(a, l.agentPaths, rec.ID, mcpCfg); err != nil {
 			return err
 		}
-		mode = "generate"
+		mode = "inject"
 	}
 
 	lr := store.LinkRecord{
@@ -158,8 +144,19 @@ func (l *Linker) Unlink(packageID, agentName string) error {
 	}
 
 	if lp != "" {
-		if err := os.Remove(lp); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
+		rec, ok := l.store.GetPackage(packageID)
+		if ok && rec.Kind == store.PackageKindMCP {
+			a2, err := agent.Parse(agentName)
+			if err != nil {
+				return err
+			}
+			if err := agent.RemoveMCP(a2, l.agentPaths, packageID); err != nil {
+				return err
+			}
+		} else {
+			if err := os.Remove(lp); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
 		}
 	}
 

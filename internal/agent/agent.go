@@ -297,6 +297,204 @@ func parseTOMLStringArray(s string) []string {
 	return out
 }
 
+// MCPNativeConfigPath returns the file that ASM injects MCP config into.
+func MCPNativeConfigPath(a Agent, agentPaths map[string]string) (string, error) {
+	home, err := Home(a, agentPaths)
+	if err != nil {
+		return "", err
+	}
+	switch a {
+	case Codex:
+		return filepath.Join(home, "config.toml"), nil
+	case Claude:
+		return filepath.Join(home, "settings.json"), nil
+	default:
+		return "", fmt.Errorf("agent %q does not support MCP native config injection", a)
+	}
+}
+
+// InjectMCP writes (or overwrites) the MCP server entry in the agent's native config.
+func InjectMCP(a Agent, agentPaths map[string]string, id string, cfg MCPServerConfig) error {
+	switch a {
+	case Codex:
+		home, err := Home(a, agentPaths)
+		if err != nil {
+			return err
+		}
+		return injectCodexMCP(home, id, cfg)
+	case Claude:
+		home, err := Home(a, agentPaths)
+		if err != nil {
+			return err
+		}
+		return injectClaudeMCP(home, id, cfg)
+	default:
+		return fmt.Errorf("agent %q does not support MCP injection", a)
+	}
+}
+
+// RemoveMCP removes the MCP server entry from the agent's native config.
+func RemoveMCP(a Agent, agentPaths map[string]string, id string) error {
+	switch a {
+	case Codex:
+		home, err := Home(a, agentPaths)
+		if err != nil {
+			return err
+		}
+		return removeCodexMCP(home, id)
+	case Claude:
+		home, err := Home(a, agentPaths)
+		if err != nil {
+			return err
+		}
+		return removeClaudeMCP(home, id)
+	default:
+		return fmt.Errorf("agent %q does not support MCP removal", a)
+	}
+}
+
+// injectCodexMCP upserts [mcp_servers.<id>] in ~/.codex/config.toml.
+func injectCodexMCP(home, id string, cfg MCPServerConfig) error {
+	cfgPath := filepath.Join(home, "config.toml")
+	data, _ := os.ReadFile(cfgPath)
+
+	cleaned := removeCodexMCPSections(string(data), id)
+
+	var buf strings.Builder
+	buf.WriteString(strings.TrimRight(cleaned, "\n"))
+	buf.WriteString("\n\n")
+	fmt.Fprintf(&buf, "[mcp_servers.%s]\n", id)
+	fmt.Fprintf(&buf, "type = %q\n", cfg.Type)
+	fmt.Fprintf(&buf, "command = %q\n", cfg.Command)
+	if len(cfg.Args) > 0 {
+		parts := make([]string, len(cfg.Args))
+		for i, a := range cfg.Args {
+			parts[i] = fmt.Sprintf("%q", a)
+		}
+		fmt.Fprintf(&buf, "args = [%s]\n", strings.Join(parts, ", "))
+	}
+	if len(cfg.Env) > 0 {
+		fmt.Fprintf(&buf, "\n[mcp_servers.%s.env]\n", id)
+		for k, v := range cfg.Env {
+			fmt.Fprintf(&buf, "%s = %q\n", k, v)
+		}
+	}
+	buf.WriteString("\n")
+
+	return os.WriteFile(cfgPath, []byte(buf.String()), 0o644)
+}
+
+// removeCodexMCP removes [mcp_servers.<id>] sections from ~/.codex/config.toml.
+func removeCodexMCP(home, id string) error {
+	cfgPath := filepath.Join(home, "config.toml")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	cleaned := removeCodexMCPSections(string(data), id)
+	return os.WriteFile(cfgPath, []byte(cleaned), 0o644)
+}
+
+// removeCodexMCPSections strips [mcp_servers.<id>] and [mcp_servers.<id>.env]
+// sections from a config.toml string.
+func removeCodexMCPSections(content, id string) string {
+	prefix1 := "[mcp_servers." + id + "]"
+	prefix2 := "[mcp_servers." + id + "."
+	var out []string
+	skip := false
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			skip = trimmed == prefix1 || strings.HasPrefix(trimmed, prefix2)
+		}
+		if !skip {
+			out = append(out, line)
+		}
+	}
+	result := strings.Join(out, "\n")
+	// Collapse multiple blank lines into one.
+	for strings.Contains(result, "\n\n\n") {
+		result = strings.ReplaceAll(result, "\n\n\n", "\n\n")
+	}
+	return result
+}
+
+// injectClaudeMCP upserts the MCP server under mcpServers in ~/.claude/settings.json.
+func injectClaudeMCP(home, id string, cfg MCPServerConfig) error {
+	cfgPath := filepath.Join(home, "settings.json")
+	data, _ := os.ReadFile(cfgPath)
+
+	var settings map[string]json.RawMessage
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &settings); err != nil {
+			return fmt.Errorf("parse settings.json: %w", err)
+		}
+	} else {
+		settings = make(map[string]json.RawMessage)
+	}
+
+	var mcpServers map[string]json.RawMessage
+	if raw, ok := settings["mcpServers"]; ok {
+		_ = json.Unmarshal(raw, &mcpServers)
+	}
+	if mcpServers == nil {
+		mcpServers = make(map[string]json.RawMessage)
+	}
+
+	cfgJSON, err := json.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	mcpServers[id] = cfgJSON
+
+	raw, err := json.Marshal(mcpServers)
+	if err != nil {
+		return err
+	}
+	settings["mcpServers"] = raw
+
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(cfgPath, append(out, '\n'), 0o644)
+}
+
+// removeClaudeMCP removes the MCP server from mcpServers in ~/.claude/settings.json.
+func removeClaudeMCP(home, id string) error {
+	cfgPath := filepath.Join(home, "settings.json")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	var settings map[string]json.RawMessage
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return fmt.Errorf("parse settings.json: %w", err)
+	}
+
+	if raw, ok := settings["mcpServers"]; ok {
+		var mcpServers map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &mcpServers); err == nil {
+			delete(mcpServers, id)
+			updated, _ := json.Marshal(mcpServers)
+			settings["mcpServers"] = updated
+		}
+	}
+
+	out, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(cfgPath, append(out, '\n'), 0o644)
+}
+
 func MCPConfigPath(a Agent, agentPaths map[string]string) (string, error) {
 	home, err := Home(a, agentPaths)
 	if err != nil {

@@ -165,14 +165,12 @@ func (m *Migrator) Apply(
 		// Enable for every agent that had this package.
 		for _, agentName := range c.FoundIn {
 			var enableErr error
-			if c.ConfigData != nil {
-				// MCP: already in agent's native config, just record ownership.
-				enableErr = lnk.EnableNative(c.ID, agentName)
-			} else if lp, ok := c.LinkPaths[agentName]; ok && lp != "" {
+			if lp, ok := c.LinkPaths[agentName]; ok && lp != "" {
 				enableErr = lnk.EnableAtPath(c.ID, agentName, lp)
 			} else {
 				enableErr = lnk.Enable(c.ID, agentName)
 			}
+
 			if enableErr != nil {
 				return result, fmt.Errorf("enable %s for %s: %w", c.ID, agentName, enableErr)
 			}
