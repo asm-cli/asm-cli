@@ -137,7 +137,7 @@ func (m *Migrator) Apply(
 
 		if c.ConfigData != nil {
 			// MCP path: write config JSON (and optional binary) to store.
-			rec, err := inst.InstallMCPConfig(c.ID, c.ConfigData, c.LocalBinary)
+			_, err := inst.InstallMCPConfig(c.ID, c.ConfigData, c.LocalBinary)
 			if err != nil {
 				var aee *store.AlreadyExistsError
 				if errors.As(err, &aee) {
@@ -146,13 +146,10 @@ func (m *Migrator) Apply(
 					return result, fmt.Errorf("import %s: %w", c.ID, err)
 				}
 			}
-			// Replace original binary with a symlink to the ASM store copy.
+			// Remove the original binary — config.toml command now points to
+			// the ASM store copy, so the original path is no longer needed.
 			if c.LocalBinary != "" && !alreadyInStore {
-				storeBin := filepath.Join(rec.StorePath, filepath.Base(c.LocalBinary))
 				_ = os.Remove(c.LocalBinary)
-				if err := os.Symlink(storeBin, c.LocalBinary); err != nil {
-					return result, fmt.Errorf("symlink binary %s: %w", c.LocalBinary, err)
-				}
 			}
 		} else {
 			// Skip import if source is already inside the ASM store tree.
