@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"github.com/6xiaowu9/asm/cmd/pkgcmd"
-	"github.com/6xiaowu9/asm/internal/store"
+	"github.com/asm-cli/asm-cli/cmd/pkgcmd"
+	"github.com/asm-cli/asm-cli/internal/store"
 	"github.com/spf13/cobra"
 )
 

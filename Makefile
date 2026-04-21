@@ -1,5 +1,5 @@
 BINARY     := asm
-MODULE     := github.com/6xiaowu9/asm
+MODULE     := github.com/asm-cli/asm-cli
 VERPKG     := $(MODULE)/internal/version
 
 VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")

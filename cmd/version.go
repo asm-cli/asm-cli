@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/6xiaowu9/asm/internal/version"
+	"github.com/asm-cli/asm-cli/internal/version"
 	"github.com/spf13/cobra"
 )
 

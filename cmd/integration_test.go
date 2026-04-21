@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/6xiaowu9/asm/cmd"
+	"github.com/asm-cli/asm-cli/cmd"
 )
 
 // testEnv sets up an isolated ASM home with a config pointing claude at claudeHome.

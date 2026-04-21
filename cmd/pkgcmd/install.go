@@ -3,7 +3,7 @@ package pkgcmd
 import (
 	"fmt"
 
-	"github.com/6xiaowu9/asm/internal/installer"
+	"github.com/asm-cli/asm-cli/internal/installer"
 	"github.com/spf13/cobra"
 )
 

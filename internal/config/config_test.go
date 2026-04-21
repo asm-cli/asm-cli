@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/6xiaowu9/asm/internal/config"
+	"github.com/asm-cli/asm-cli/internal/config"
 )
 
 func TestDefault(t *testing.T) {

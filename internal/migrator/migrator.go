@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/6xiaowu9/asm/internal/installer"
-	"github.com/6xiaowu9/asm/internal/linker"
-	"github.com/6xiaowu9/asm/internal/store"
+	"github.com/asm-cli/asm-cli/internal/installer"
+	"github.com/asm-cli/asm-cli/internal/linker"
+	"github.com/asm-cli/asm-cli/internal/store"
 )
 
 // Candidate is a deduplicated, unmanaged package found in one or more agent directories.

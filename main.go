@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/6xiaowu9/asm/cmd"
+	"github.com/asm-cli/asm-cli/cmd"
 )
 
 func main() {

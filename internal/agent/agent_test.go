@@ -3,7 +3,7 @@ package agent_test
 import (
 	"testing"
 
-	"github.com/6xiaowu9/asm/internal/agent"
+	"github.com/asm-cli/asm-cli/internal/agent"
 )
 
 func TestParse_Valid(t *testing.T) {

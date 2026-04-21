@@ -1,4 +1,4 @@
-module github.com/6xiaowu9/asm
+module github.com/asm-cli/asm-cli
 
 go 1.22
 

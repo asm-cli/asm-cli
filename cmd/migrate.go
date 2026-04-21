@@ -3,12 +3,12 @@ package cmd
 import (
 	"path/filepath"
 
-	"github.com/6xiaowu9/asm/cmd/pkgcmd"
-	"github.com/6xiaowu9/asm/internal/agent"
-	"github.com/6xiaowu9/asm/internal/config"
-	"github.com/6xiaowu9/asm/internal/installer"
-	"github.com/6xiaowu9/asm/internal/linker"
-	"github.com/6xiaowu9/asm/internal/store"
+	"github.com/asm-cli/asm-cli/cmd/pkgcmd"
+	"github.com/asm-cli/asm-cli/internal/agent"
+	"github.com/asm-cli/asm-cli/internal/config"
+	"github.com/asm-cli/asm-cli/internal/installer"
+	"github.com/asm-cli/asm-cli/internal/linker"
+	"github.com/asm-cli/asm-cli/internal/store"
 	"github.com/spf13/cobra"
 )
 

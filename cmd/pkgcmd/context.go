@@ -3,9 +3,9 @@ package pkgcmd
 import (
 	"context"
 
-	"github.com/6xiaowu9/asm/internal/config"
-	"github.com/6xiaowu9/asm/internal/installer"
-	"github.com/6xiaowu9/asm/internal/linker"
+	"github.com/asm-cli/asm-cli/internal/config"
+	"github.com/asm-cli/asm-cli/internal/installer"
+	"github.com/asm-cli/asm-cli/internal/linker"
 	"github.com/spf13/cobra"
 )
 

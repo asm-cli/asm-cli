@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/6xiaowu9/asm/internal/agent"
-	"github.com/6xiaowu9/asm/internal/migrator"
+	"github.com/asm-cli/asm-cli/internal/agent"
+	"github.com/asm-cli/asm-cli/internal/migrator"
 	"github.com/spf13/cobra"
 )
 

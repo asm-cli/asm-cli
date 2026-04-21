@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/6xiaowu9/asm/internal/agent"
-	"github.com/6xiaowu9/asm/internal/store"
+	"github.com/asm-cli/asm-cli/internal/agent"
+	"github.com/asm-cli/asm-cli/internal/store"
 )
 
 // StatusReport holds the projection status for an agent.

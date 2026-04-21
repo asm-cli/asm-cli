@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/6xiaowu9/asm/internal/agent"
-	"github.com/6xiaowu9/asm/internal/initializer"
+	"github.com/asm-cli/asm-cli/internal/agent"
+	"github.com/asm-cli/asm-cli/internal/initializer"
 )
 
 // testEnv creates an isolated home directory with the given agent subdirs pre-created.

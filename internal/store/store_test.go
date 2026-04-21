@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6xiaowu9/asm/internal/store"
+	"github.com/asm-cli/asm-cli/internal/store"
 )
 
 func TestStore_SaveAndGetPackage(t *testing.T) {

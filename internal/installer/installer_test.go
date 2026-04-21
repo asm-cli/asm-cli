@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/6xiaowu9/asm/internal/installer"
-	"github.com/6xiaowu9/asm/internal/store"
+	"github.com/asm-cli/asm-cli/internal/installer"
+	"github.com/asm-cli/asm-cli/internal/store"
 )
 
 func newInstaller(t *testing.T, kind store.PackageKind) (*installer.Installer, *store.Store, string) {

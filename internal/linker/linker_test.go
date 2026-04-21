@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/6xiaowu9/asm/internal/installer"
-	"github.com/6xiaowu9/asm/internal/linker"
-	"github.com/6xiaowu9/asm/internal/store"
+	"github.com/asm-cli/asm-cli/internal/installer"
+	"github.com/asm-cli/asm-cli/internal/linker"
+	"github.com/asm-cli/asm-cli/internal/store"
 )
 
 func setup(t *testing.T, kind store.PackageKind) (*linker.Linker, *store.Store, map[string]string, string) {
