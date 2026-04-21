@@ -22,6 +22,7 @@ type Candidate struct {
 	FoundIn    []string          // agent names where this ID was found
 	SourcePath string            // path to import from (first occurrence, symlinks resolved)
 	LinkPaths  map[string]string // agent → explicit link path (empty = use computed default)
+	ConfigData []byte            // non-nil for MCP: raw JSON config to write to store
 }
 
 // ImportedPackage records a successful import.
@@ -64,9 +65,12 @@ func (m *Migrator) Scan(
 	for _, agentName := range agentNames {
 		var raw []linker.MigrationCandidate
 		var err error
-		if s.Kind() == store.PackageKindPlugin {
+		switch s.Kind() {
+		case store.PackageKindPlugin:
 			raw, err = lnk.MigratePlugins(agentName)
-		} else {
+		case store.PackageKindMCP:
+			raw, err = lnk.MigrateMCPs(agentName)
+		default:
 			raw, err = lnk.Migrate(agentName)
 		}
 		if err != nil {
@@ -83,13 +87,14 @@ func (m *Migrator) Scan(
 					c.LinkPaths[agentName] = mc.LinkPath
 				}
 			} else {
-				// Resolve symlinks so we import real content, not a dangling pointer.
-				src := resolveSource(mc.SourcePath)
 				cand := &Candidate{
 					ID:         mc.ID,
 					Kind:       s.Kind(),
 					FoundIn:    []string{agentName},
-					SourcePath: src,
+					ConfigData: mc.ConfigData,
+				}
+				if mc.ConfigData == nil {
+					cand.SourcePath = resolveSource(mc.SourcePath)
 				}
 				if mc.LinkPath != "" {
 					cand.LinkPaths = map[string]string{agentName: mc.LinkPath}
@@ -127,14 +132,9 @@ func (m *Migrator) Apply(
 
 		alreadyInStore := false
 
-		// Skip import if source is already inside the ASM store tree.
-		storeTree := filepath.Join(m.asmHome, "store")
-		if strings.HasPrefix(c.SourcePath, storeTree) {
-			alreadyInStore = true
-		}
-
-		if !alreadyInStore {
-			_, err := inst.Install(c.SourcePath, installer.Options{ID: c.ID})
+		if c.ConfigData != nil {
+			// MCP path: write config JSON directly to store.
+			_, err := inst.InstallMCPConfig(c.ID, c.ConfigData)
 			if err != nil {
 				var aee *store.AlreadyExistsError
 				if errors.As(err, &aee) {
@@ -143,18 +143,38 @@ func (m *Migrator) Apply(
 					return result, fmt.Errorf("import %s: %w", c.ID, err)
 				}
 			}
+		} else {
+			// Skip import if source is already inside the ASM store tree.
+			storeTree := filepath.Join(m.asmHome, "store")
+			if strings.HasPrefix(c.SourcePath, storeTree) {
+				alreadyInStore = true
+			}
+			if !alreadyInStore {
+				_, err := inst.Install(c.SourcePath, installer.Options{ID: c.ID})
+				if err != nil {
+					var aee *store.AlreadyExistsError
+					if errors.As(err, &aee) {
+						alreadyInStore = true
+					} else {
+						return result, fmt.Errorf("import %s: %w", c.ID, err)
+					}
+				}
+			}
 		}
 
 		// Enable for every agent that had this package.
 		for _, agentName := range c.FoundIn {
-			if lp, ok := c.LinkPaths[agentName]; ok && lp != "" {
-				if err := lnk.EnableAtPath(c.ID, agentName, lp); err != nil {
-					return result, fmt.Errorf("enable %s for %s: %w", c.ID, agentName, err)
-				}
+			var enableErr error
+			if c.ConfigData != nil {
+				// MCP: already in agent's native config, just record ownership.
+				enableErr = lnk.EnableNative(c.ID, agentName)
+			} else if lp, ok := c.LinkPaths[agentName]; ok && lp != "" {
+				enableErr = lnk.EnableAtPath(c.ID, agentName, lp)
 			} else {
-				if err := lnk.Enable(c.ID, agentName); err != nil {
-					return result, fmt.Errorf("enable %s for %s: %w", c.ID, agentName, err)
-				}
+				enableErr = lnk.Enable(c.ID, agentName)
+			}
+			if enableErr != nil {
+				return result, fmt.Errorf("enable %s for %s: %w", c.ID, agentName, enableErr)
 			}
 		}
 

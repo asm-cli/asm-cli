@@ -138,6 +138,165 @@ func codexPluginEntries(agentPaths map[string]string) ([]PluginScanEntry, error)
 	return entries, nil
 }
 
+// MCPServerConfig holds the configuration for a single MCP server.
+type MCPServerConfig struct {
+	Type    string            `json:"type"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
+// MCPScanEntry describes an MCP server found in an agent's configuration.
+type MCPScanEntry struct {
+	ID         string
+	ConfigJSON []byte // JSON-encoded MCPServerConfig
+}
+
+// MCPScanEntries returns MCP server entries found in the agent's native config.
+func MCPScanEntries(a Agent, agentPaths map[string]string) ([]MCPScanEntry, error) {
+	switch a {
+	case Codex:
+		return codexMCPEntries(agentPaths)
+	case Claude:
+		return claudeMCPEntries(agentPaths)
+	default:
+		return nil, nil
+	}
+}
+
+func codexMCPEntries(agentPaths map[string]string) ([]MCPScanEntry, error) {
+	home, ok := agentPaths[string(Codex)]
+	if !ok || home == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		return nil, nil
+	}
+
+	// Parse [mcp_servers.<name>] and [mcp_servers.<name>.env] sections.
+	servers := map[string]*MCPServerConfig{}
+	var currentServer string
+	var inEnv bool
+
+	for _, rawLine := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section := strings.Trim(line, "[]")
+			if strings.HasPrefix(section, "mcp_servers.") {
+				rest := strings.TrimPrefix(section, "mcp_servers.")
+				if strings.Contains(rest, ".env") {
+					// [mcp_servers.<name>.env]
+					currentServer = strings.TrimSuffix(rest, ".env")
+					inEnv = true
+				} else {
+					currentServer = rest
+					inEnv = false
+					if _, ok := servers[currentServer]; !ok {
+						servers[currentServer] = &MCPServerConfig{}
+					}
+				}
+			} else {
+				currentServer = ""
+				inEnv = false
+			}
+			continue
+		}
+		if currentServer == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+
+		srv := servers[currentServer]
+		if srv == nil {
+			continue
+		}
+		if inEnv {
+			if srv.Env == nil {
+				srv.Env = map[string]string{}
+			}
+			srv.Env[key] = trimTOMLQuotes(val)
+			continue
+		}
+		switch key {
+		case "type":
+			srv.Type = trimTOMLQuotes(val)
+		case "command":
+			srv.Command = trimTOMLQuotes(val)
+		case "args":
+			srv.Args = parseTOMLStringArray(val)
+		}
+	}
+
+	var entries []MCPScanEntry
+	for id, srv := range servers {
+		data, err := json.Marshal(srv)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, MCPScanEntry{ID: id, ConfigJSON: data})
+	}
+	return entries, nil
+}
+
+func claudeMCPEntries(agentPaths map[string]string) ([]MCPScanEntry, error) {
+	home, ok := agentPaths[string(Claude)]
+	if !ok || home == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(filepath.Join(home, "settings.json"))
+	if err != nil {
+		return nil, nil
+	}
+
+	var settings struct {
+		MCPServers map[string]MCPServerConfig `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return nil, nil
+	}
+
+	var entries []MCPScanEntry
+	for id, srv := range settings.MCPServers {
+		cfg := srv
+		cfgJSON, err := json.Marshal(&cfg)
+		if err != nil {
+			continue
+		}
+		entries = append(entries, MCPScanEntry{ID: id, ConfigJSON: cfgJSON})
+	}
+	return entries, nil
+}
+
+func trimTOMLQuotes(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+func parseTOMLStringArray(s string) []string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, "[]")
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		out = append(out, trimTOMLQuotes(strings.TrimSpace(part)))
+	}
+	return out
+}
+
 func MCPConfigPath(a Agent, agentPaths map[string]string) (string, error) {
 	home, err := Home(a, agentPaths)
 	if err != nil {

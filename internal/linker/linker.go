@@ -40,6 +40,10 @@ type MigrationCandidate struct {
 	// the link must replace a specific path (e.g. the installPath in
 	// installed_plugins.json). Empty means use the default computed path.
 	LinkPath string
+	// ConfigData holds raw config JSON for MCP servers. When set, the migrator
+	// writes it directly to the store instead of copying a source directory.
+	// NativeLink is set automatically when ConfigData is non-nil.
+	ConfigData []byte
 }
 
 // Linker manages projections (symlinks / JSON manifests) between the ASM
@@ -199,6 +203,29 @@ func (l *Linker) Enable(packageID, agentName string) error {
 	return l.addEnabledAgent(packageID, agentName)
 }
 
+// EnableNative records a link for a package that is already present in the
+// agent's native config (e.g. MCP servers in config.toml). No filesystem
+// changes are made; the record only tracks ownership in the ASM store.
+func (l *Linker) EnableNative(packageID, agentName string) error {
+	rec, ok := l.store.GetPackage(packageID)
+	if !ok {
+		return &store.NotFoundError{ID: packageID}
+	}
+	lr := store.LinkRecord{
+		PackageID: packageID,
+		Agent:     agentName,
+		Kind:      rec.Kind,
+		Mode:      "native",
+		LinkPath:  "",
+		Target:    rec.StorePath,
+		UpdatedAt: time.Now(),
+	}
+	if err := l.store.SaveLink(lr); err != nil {
+		return err
+	}
+	return l.addEnabledAgent(packageID, agentName)
+}
+
 // EnableAtPath is like Enable but uses an explicit link path instead of
 // computing one from the agent kind. Used for plugins whose installPath is
 // recorded in an external manifest (e.g. installed_plugins.json).
@@ -229,6 +256,31 @@ func (l *Linker) EnableAtPath(packageID, agentName, linkPath string) error {
 		return err
 	}
 	return l.addEnabledAgent(packageID, agentName)
+}
+
+// MigrateMCPs reads the agent's native MCP configuration and returns entries
+// whose IDs are not already in the MCP store.
+func (l *Linker) MigrateMCPs(agentName string) ([]MigrationCandidate, error) {
+	a, err := agent.Parse(agentName)
+	if err != nil {
+		return nil, err
+	}
+
+	entries, err := agent.MCPScanEntries(a, l.agentPaths)
+	if err != nil {
+		return nil, fmt.Errorf("scan %s MCP: %w", agentName, err)
+	}
+
+	var candidates []MigrationCandidate
+	for _, e := range entries {
+		if _, ok := l.store.GetPackage(e.ID); !ok {
+			candidates = append(candidates, MigrationCandidate{
+				ID:         e.ID,
+				ConfigData: e.ConfigJSON,
+			})
+		}
+	}
+	return candidates, nil
 }
 
 // MigratePlugins scans the agent's plugin directories and returns entries

@@ -172,6 +172,38 @@ func (i *Installer) installGit(source string, opts Options) (store.PackageRecord
 	return rec, nil
 }
 
+// InstallMCPConfig writes a raw JSON config to the store and registers the
+// package. Used when migrating MCP servers from agent config files.
+func (i *Installer) InstallMCPConfig(id string, configJSON []byte) (store.PackageRecord, error) {
+	if _, ok := i.store.GetPackage(id); ok {
+		return store.PackageRecord{}, &store.AlreadyExistsError{ID: id}
+	}
+
+	storePath := i.storePath(id)
+	if err := os.MkdirAll(storePath, 0o755); err != nil {
+		return store.PackageRecord{}, fmt.Errorf("create store dir: %w", err)
+	}
+
+	cfgFile := filepath.Join(storePath, "config.json")
+	if err := os.WriteFile(cfgFile, configJSON, 0o644); err != nil {
+		return store.PackageRecord{}, fmt.Errorf("write config: %w", err)
+	}
+
+	rev, _ := dirRevision(storePath)
+	rec := store.PackageRecord{
+		ID:          id,
+		Kind:        i.store.Kind(),
+		Source:      store.InstallSource{Type: store.SourceTypeLocal},
+		Revision:    rev,
+		InstalledAt: time.Now(),
+		StorePath:   storePath,
+	}
+	if err := i.store.SavePackage(rec); err != nil {
+		return store.PackageRecord{}, fmt.Errorf("save package: %w", err)
+	}
+	return rec, nil
+}
+
 // Uninstall removes a package from the store and deletes its store path,
 // but does not remove any links.
 func (i *Installer) Uninstall(id string) error {
