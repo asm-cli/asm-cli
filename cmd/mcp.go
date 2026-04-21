@@ -16,6 +16,7 @@ func newMCPCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(
+		pkgcmd.NewAddCmd(),
 		pkgcmd.NewInstallCmd(),
 		pkgcmd.NewListCmd(),
 		pkgcmd.NewStatusCmd(),

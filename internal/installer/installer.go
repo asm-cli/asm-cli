@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asm-cli/asm-cli/internal/agent"
 	"github.com/asm-cli/asm-cli/internal/store"
 )
 
@@ -171,6 +172,16 @@ func (i *Installer) installGit(source string, opts Options) (store.PackageRecord
 	}
 
 	return rec, nil
+}
+
+// InstallMCPServer registers an MCP server from an inline MCPServerConfig
+// (no source directory required). Useful for npx/http/sse servers.
+func (i *Installer) InstallMCPServer(id string, cfg agent.MCPServerConfig) (store.PackageRecord, error) {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return store.PackageRecord{}, fmt.Errorf("marshal config: %w", err)
+	}
+	return i.InstallMCPConfig(id, data, "")
 }
 
 // InstallMCPConfig writes a raw JSON config (and optionally a binary) to the

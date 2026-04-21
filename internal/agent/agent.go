@@ -139,11 +139,13 @@ func codexPluginEntries(agentPaths map[string]string) ([]PluginScanEntry, error)
 }
 
 // MCPServerConfig holds the configuration for a single MCP server.
+// Stdio servers use Command/Args/Env; HTTP/SSE servers use URL.
 type MCPServerConfig struct {
 	Type    string            `json:"type"`
-	Command string            `json:"command"`
+	Command string            `json:"command,omitempty"`
 	Args    []string          `json:"args,omitempty"`
 	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
 }
 
 // MCPScanEntry describes an MCP server found in an agent's configuration.
@@ -187,8 +189,7 @@ func codexMCPEntries(agentPaths map[string]string) ([]MCPScanEntry, error) {
 		}
 		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 			section := strings.Trim(line, "[]")
-			if strings.HasPrefix(section, "mcp_servers.") {
-				rest := strings.TrimPrefix(section, "mcp_servers.")
+			if rest, ok := strings.CutPrefix(section, "mcp_servers."); ok {
 				if strings.Contains(rest, ".env") {
 					// [mcp_servers.<name>.env]
 					currentServer = strings.TrimSuffix(rest, ".env")
@@ -234,6 +235,8 @@ func codexMCPEntries(agentPaths map[string]string) ([]MCPScanEntry, error) {
 			srv.Command = trimTOMLQuotes(val)
 		case "args":
 			srv.Args = parseTOMLStringArray(val)
+		case "url":
+			srv.URL = trimTOMLQuotes(val)
 		}
 	}
 
@@ -389,18 +392,22 @@ func injectCodexMCP(home, id string, cfg MCPServerConfig) error {
 	buf.WriteString("\n\n")
 	fmt.Fprintf(&buf, "[mcp_servers.%s]\n", id)
 	fmt.Fprintf(&buf, "type = %q\n", cfg.Type)
-	fmt.Fprintf(&buf, "command = %q\n", cfg.Command)
-	if len(cfg.Args) > 0 {
-		parts := make([]string, len(cfg.Args))
-		for i, a := range cfg.Args {
-			parts[i] = fmt.Sprintf("%q", a)
+	if cfg.URL != "" {
+		fmt.Fprintf(&buf, "url = %q\n", cfg.URL)
+	} else {
+		fmt.Fprintf(&buf, "command = %q\n", cfg.Command)
+		if len(cfg.Args) > 0 {
+			parts := make([]string, len(cfg.Args))
+			for i, a := range cfg.Args {
+				parts[i] = fmt.Sprintf("%q", a)
+			}
+			fmt.Fprintf(&buf, "args = [%s]\n", strings.Join(parts, ", "))
 		}
-		fmt.Fprintf(&buf, "args = [%s]\n", strings.Join(parts, ", "))
-	}
-	if len(cfg.Env) > 0 {
-		fmt.Fprintf(&buf, "\n[mcp_servers.%s.env]\n", id)
-		for k, v := range cfg.Env {
-			fmt.Fprintf(&buf, "%s = %q\n", k, v)
+		if len(cfg.Env) > 0 {
+			fmt.Fprintf(&buf, "\n[mcp_servers.%s.env]\n", id)
+			for k, v := range cfg.Env {
+				fmt.Fprintf(&buf, "%s = %q\n", k, v)
+			}
 		}
 	}
 	buf.WriteString("\n")
