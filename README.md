@@ -50,6 +50,36 @@ Install once, enable for any number of agents — no duplication.
 
 ## Installation
 
+Install the latest release binary with `curl`:
+
+```bash
+mkdir -p ~/.local/bin
+tmp="$(mktemp -d)"
+curl -fsSL "https://github.com/6xiaowu9/asm/releases/latest/download/asm-latest-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/').tar.gz" \
+  | tar -xz -C "$tmp"
+install -m 0755 "$tmp"/*/asm ~/.local/bin/asm
+rm -rf "$tmp"
+```
+
+The one-line installer matches the release assets for Linux amd64 and macOS
+arm64. Windows users can download `asm-<version>-windows-amd64.zip` from the
+GitHub Release page and place `asm.exe` in a directory on `PATH`.
+
+Add `~/.local/bin` to your shell `PATH` if it is not already there:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Verify the install:
+
+```bash
+asm version
+```
+
+Or build from source:
+
 ```bash
 git clone https://github.com/6xiaowu9/asm
 cd asm
