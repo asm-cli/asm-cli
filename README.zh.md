@@ -10,6 +10,7 @@
 
 - [概述](#概述)
 - [安装](#安装)
+- [快速开始](#快速开始)
 - [工作原理](#工作原理)
 - [配置](#配置)
 - [初始化](#初始化)
@@ -44,6 +45,68 @@ go build -o ~/.local/bin/asm .
 ```
 
 需要 Go 1.22 及以上版本。
+
+---
+
+## 快速开始
+
+先初始化 ASM。该命令会创建 `~/.asm/`，写入默认配置，并将 `@ASM.md`
+引用注入已检测到的 Agent 配置。
+
+```bash
+asm init
+```
+
+### 在 shell 中使用
+
+Skill、MCP 服务器或 Plugin 只需安装一次，然后为一个或多个 Agent 启用。
+
+```bash
+asm skills install https://github.com/user/my-skill --agents claude,codex
+asm mcp install https://github.com/user/my-mcp --agents codex
+asm plugins install https://github.com/user/my-plugin --agents claude,codex
+```
+
+查看 ASM 管理的内容，并检查投影是否健康。
+
+```bash
+asm skills list
+asm skills status --agent codex
+asm skills doctor
+```
+
+如果包已经存在于 ASM 存储区，请直接 enable 或 use，不要重复安装。
+
+```bash
+asm skills enable my-skill --agent claude
+asm skills use my-skill --agents claude,codex
+```
+
+### 在 AI CLI 中使用
+
+执行 `asm init` 后，受支持的 AI CLI 会收到 `@ASM.md` 指令。你可以让
+Agent 直接使用 ASM 包管理命令，也可以在 CLI 支持时使用 slash command
+映射。
+
+```text
+/skills install https://github.com/user/my-skill --agents claude,codex
+/mcp install https://github.com/user/my-mcp --agents codex
+/plugins install https://github.com/user/my-plugin --agents claude,codex
+```
+
+这些命令会映射到相同的 ASM 命令：
+
+```text
+/skills   -> asm skills
+/mcp      -> asm mcp
+/plugins  -> asm plugins
+```
+
+例如，在 AI CLI 的对话中输入：
+
+```text
+Use ASM to install https://github.com/user/my-skill for claude and codex.
+```
 
 ---
 

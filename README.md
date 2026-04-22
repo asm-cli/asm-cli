@@ -10,6 +10,7 @@ Manage skills, MCP servers, and plugins for AI agents from a single store.
 
 - [Overview](#overview)
 - [Installation](#installation)
+- [Quickstart](#quickstart)
 - [How It Works](#how-it-works)
 - [Configuration](#configuration)
 - [Init](#init)
@@ -44,6 +45,70 @@ go build -o ~/.local/bin/asm .
 ```
 
 Requires Go 1.22+.
+
+---
+
+## Quickstart
+
+Initialize ASM first. This creates `~/.asm/`, writes the default config, and
+injects the `@ASM.md` reference into detected agent configs.
+
+```bash
+asm init
+```
+
+### Use from a shell
+
+Install a skill, MCP server, or plugin once, then enable it for one or more
+agents.
+
+```bash
+asm skills install https://github.com/user/my-skill --agents claude,codex
+asm mcp install https://github.com/user/my-mcp --agents codex
+asm plugins install https://github.com/user/my-plugin --agents claude,codex
+```
+
+Check what ASM manages and whether projections are healthy.
+
+```bash
+asm skills list
+asm skills status --agent codex
+asm skills doctor
+```
+
+If a package already exists in the ASM store, enable or use it instead of
+installing it again.
+
+```bash
+asm skills enable my-skill --agent claude
+asm skills use my-skill --agents claude,codex
+```
+
+### Use from an AI CLI
+
+After `asm init`, supported AI CLIs receive the `@ASM.md` instructions. Ask the
+agent to use ASM package commands directly, or use the slash-command mapping
+when the CLI supports it.
+
+```text
+/skills install https://github.com/user/my-skill --agents claude,codex
+/mcp install https://github.com/user/my-mcp --agents codex
+/plugins install https://github.com/user/my-plugin --agents claude,codex
+```
+
+These map to the same ASM commands:
+
+```text
+/skills   -> asm skills
+/mcp      -> asm mcp
+/plugins  -> asm plugins
+```
+
+For example, in an AI CLI prompt:
+
+```text
+Use ASM to install https://github.com/user/my-skill for claude and codex.
+```
 
 ---
 
