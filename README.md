@@ -6,8 +6,20 @@ Manage skills, MCP servers, and plugins for AI agents from a single store.
 
 ---
 
+## Problem
+
+Using multiple AI CLIs often means the same skills, MCP servers, and plugins are
+installed separately in each CLI's own home directory. That creates duplicated
+files, inconsistent versions, repeated setup work, and drift between agents.
+
+ASM solves this by storing each package once in `~/.asm/` and projecting it into
+Claude, Codex, Gemini, Cursor, and other agent environments as needed.
+
+---
+
 ## Table of Contents
 
+- [Problem](#problem)
 - [Overview](#overview)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
