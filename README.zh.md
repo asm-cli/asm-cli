@@ -51,36 +51,6 @@ ASM 在 `~/.asm/` 下维护一个集中式包存储，并将包投影到各 Agen
 
 ## 安装
 
-使用 `curl` 安装最新 release 二进制：
-
-```bash
-mkdir -p ~/.local/bin
-tmp="$(mktemp -d)"
-curl -fsSL "https://github.com/6xiaowu9/asm/releases/latest/download/asm-latest-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/').tar.gz" \
-  | tar -xz -C "$tmp"
-install -m 0755 "$tmp"/*/asm ~/.local/bin/asm
-rm -rf "$tmp"
-```
-
-该一行安装命令匹配 Linux amd64 和 macOS arm64 的 release 资产。Windows
-用户可以从 GitHub Release 页面下载 `asm-<version>-windows-amd64.zip`，并
-将 `asm.exe` 放到 `PATH` 中的目录。
-
-如果 `~/.local/bin` 还不在 shell 的 `PATH` 中，请添加：
-
-```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-验证安装：
-
-```bash
-asm version
-```
-
-也可以从源码构建：
-
 ```bash
 git clone https://github.com/6xiaowu9/asm
 cd asm
